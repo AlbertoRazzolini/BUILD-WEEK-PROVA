@@ -1,18 +1,3 @@
-/*
-  REGOLE
-  - Codice in JavaScript moderno: solo const/let, mai var.
-  - DOM: usa querySelector / querySelectorAll.
-  - Eventi: usa addEventListener (mai onclick inline nell'HTML).
-  - Pattern: stato → render → eventi.
-*/
-
-/*
-  Array di domande.
-  Ogni question è un object con:
-   - question: testo della domanda
-   - correct_answer: la risposta corretta (string)
-   - incorrect_answers: array di risposte sbagliate (string[])
-*/
 const QUESTIONS = [
   {
     id: "q01",
@@ -90,26 +75,9 @@ const QUESTIONS = [
 
 /* Costanti del quiz */
 const TOTAL_QUESTIONS = QUESTIONS.length;
-const PASS_THRESHOLD = 60; // percentuale minima per "Promosso"
-const FEEDBACK_DELAY = 1500; // ms di attesa dopo risposta prima di avanzare
-const TIMER_DURATION = 20; // secondi per ogni domanda
-
-/* Stato globale */
-let currentScreen = "welcome"; // "welcome" | "quiz" | "results"
-let currentQuestion = 0;
-let score = 0;
-let timerId = null;
-
-/* SCRIVI QUI LE TUE FUNZIONI:
-   - render() che chiama renderWelcome / renderQuiz / renderResults in base a currentScreen
-   - renderWelcome() per la schermata iniziale con button Inizia
-   - renderQuiz() per la domanda corrente con i button risposta + counter + timer
-   - renderResults() per la schermata finale con percentuale + barre + verdetto
-   - startTimer() / stopTimer() per il countdown
-   - handleAnswer(button, answer) per il click su una risposta
-   - handleTimeUp() per il tempo scaduto
-   - advance() per andare alla domanda successiva o ai risultati
-*/
+const PASS_THRESHOLD = 60;
+const TIMER_DURATION = 20;
+const FEEDBACK_DELAY = 2500; // ms di pausa dopo risposta o tempo scaduto prima di avanzare
 
 /* Stato globale — modificato dalla logica (timer, handlers, advance) */
 let currentScreen = "welcome"; // "welcome" | "quiz" | "results"
@@ -256,7 +224,7 @@ function renderQuiz() {
     `Domanda ${currentQuestion + 1} / ${TOTAL_QUESTIONS}`,
   );
   const timerWrapper = make("div", "quiz-timer-wrapper");
-  const timerIcon = make("span", "quiz-timer-icon", "⏱");
+  const timerIcon = make("span", "quiz-timer-icon", "⌛");
   const timer = make("span", "quiz-timer", String(TIMER_DURATION));
   timer.id = "quiz-timer";
   timerWrapper.append(timerIcon, timer);
