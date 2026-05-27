@@ -77,19 +77,30 @@ const QUESTIONS = [
 const TOTAL_QUESTIONS = QUESTIONS.length;
 const PASS_THRESHOLD = 60;
 const TIMER_DURATION = 20;
-const FEEDBACK_DELAY = 2500; // ms di pausa dopo risposta o tempo scaduto prima di avanzare
+const FEEDBACK_DELAY = 2500;
 
-/* Stato globale — modificato dalla logica (timer, handlers, advance) */
+/* Stato globale */
 let currentScreen = "welcome"; // "welcome" | "quiz" | "results"
 let currentQuestion = 0;
 let score = 0;
-let shuffledAnswers = []; // popolato da renderQuiz, letto dagli handler
-let shuffledQuestions = []; // popolato da render() alla domanda 0, letto da renderQuiz()
+let shuffledAnswers = [];
+let shuffledQuestions = [];
 let timerId = null;
+
+// ─── LOCAL STORAGE ────────────────────────────────────────────────────────────
+
+const HISTORY_KEY = "quizHistory";
+
+const getHistory = () => JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+const pushHistory = (item) => {
+  const h = getHistory();
+  h.push(item);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
+};
+const clearHistory = () => localStorage.removeItem(HISTORY_KEY);
 
 // ─── UTILITY ──────────────────────────────────────────────────────────────────
 
-/* Crea un elemento DOM con classe e testo opzionale */
 const make = (tag, className, text) => {
   const el = document.createElement(tag);
   if (className) el.className = className;
@@ -97,7 +108,6 @@ const make = (tag, className, text) => {
   return el;
 };
 
-/* Mescola un array (Fisher-Yates) senza mutare l'originale */
 const shuffle = (arr) => {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -109,23 +119,14 @@ const shuffle = (arr) => {
 
 // ─── RENDER ───────────────────────────────────────────────────────────────────
 
-/*
- render()
- 1. Svuota <main id="app"> con replaceChildren() — niente innerHTML
- 2. Appende il nodo DOM restituito dalla render function corretta
- 3. Aggancia gli event listener sul DOM appena inserito
- Nota: l'<header class="brand"> con il logo è nell'HTML statico
- e non viene toccato da render() — il JS gestisce solo <main id="app">.
-*/
 function render() {
   const app = document.querySelector("#app");
-  app.replaceChildren(); // svuota il contenitore senza innerHTML
+  app.replaceChildren();
 
   if (currentScreen === "welcome") {
     app.appendChild(renderWelcome());
     document.querySelector("#btn-start").addEventListener("click", handleStart);
   } else if (currentScreen === "quiz") {
-    // Mescola le domande una sola volta, all'inizio di ogni partita
     if (currentQuestion === 0) shuffledQuestions = shuffle(QUESTIONS);
     app.appendChild(renderQuiz());
     startTimer();
@@ -145,25 +146,10 @@ function render() {
 
 // ─── RENDER WELCOME ───────────────────────────────────────────────────────────
 
-/*
- renderWelcome() → restituisce un nodo DOM (non una stringa)
- Struttura prodotta (segue il wireframe W):
- div.screen-welcome
-   h2.welcome-title                      "Quiz Tech"
-   div.welcome-info                      (box interno con bordo)
-     p.welcome-description               testo introduttivo
-     ul.welcome-list
-       li                                "10 domande"
-       li                                "20 secondi per risposta"
-       li                                "Soglia: 60%"
-   button#btn-start.btn.btn--primary     "Inizia"
-*/
 function renderWelcome() {
   const screen = make("div", "screen-welcome");
-
   const title = make("h2", "welcome-title", "Quiz Tech");
 
-  // Box info interno
   const info = make("div", "welcome-info");
   const desc = make(
     "p",
@@ -189,24 +175,6 @@ function renderWelcome() {
 
 // ─── RENDER QUIZ ──────────────────────────────────────────────────────────────
 
-/*
- renderQuiz() → restituisce un nodo DOM
- Mescola le risposte e salva l'ordine in shuffledAnswers (letto dagli handler).
- Struttura prodotta (segue wireframe Q):
- div.screen-quiz[data-question-id]
-   div.quiz-header
-     span.quiz-counter              "Domanda X / Y"         ← sinistra
-     div.quiz-timer-wrapper
-       span.quiz-timer-icon         "⏱"
-       span#quiz-timer.quiz-timer   "20"                    ← destra, aggiornato da startTimer()
-   h2.quiz-question                 testo domanda
-   div.quiz-answers
-     button.quiz-answer[data-index] × 2–4  (full width)
-       span.quiz-answer__letter     "A" / "B" / ...
-       (text node)                  testo risposta
- Modificatori applicati in seguito da handleAnswer / handleTimeUp:
-   .quiz-answer--correct  .quiz-answer--wrong  .quiz-timer--urgent
-*/
 function renderQuiz() {
   const q = shuffledQuestions[currentQuestion];
   shuffledAnswers = shuffle([q.correct_answer, ...q.incorrect_answers]);
@@ -216,7 +184,6 @@ function renderQuiz() {
   const screen = make("div", "screen-quiz");
   screen.dataset.questionId = q.id;
 
-  // Header: counter (sinistra) + icona e timer (destra)
   const header = make("div", "quiz-header");
   const counter = make(
     "span",
@@ -230,10 +197,8 @@ function renderQuiz() {
   timerWrapper.append(timerIcon, timer);
   header.append(counter, timerWrapper);
 
-  // Testo domanda
   const question = make("h2", "quiz-question", q.question);
 
-  // Bottoni risposta (da 2 a 4 a seconda della domanda)
   const answersContainer = make("div", "quiz-answers");
   shuffledAnswers.forEach((answer, i) => {
     const btn = make("button", "quiz-answer");
@@ -249,22 +214,6 @@ function renderQuiz() {
 
 // ─── RENDER RESULTS ───────────────────────────────────────────────────────────
 
-/*
- renderResults() → restituisce un nodo DOM
- Struttura prodotta (segue wireframe END):
- div.screen-results
-   h3.results-subtitle          "Risultati"
-   p.results-message            messaggio in base al punteggio
-   h1.results-score-box         "70%"   ← box centrato con il voto grande
-   p.results-score-label        "7 / 10 risposte corrette"
-   div.results-stat             (riga: span + barra + span)
-     span.results-stat__label   "Corrette"
-     div.results-stat__bar
-       div.results-stat__fill   ← style.width + style.background
-     span.results-stat__value   "7"
-   div.results-stat             (stessa struttura per le sbagliate)
-   button#btn-restart.btn.btn--primary   "Riprova"
-*/
 function renderResults() {
   const percentage = Math.round((score / TOTAL_QUESTIONS) * 100);
   const passed = percentage >= PASS_THRESHOLD;
@@ -279,7 +228,11 @@ function renderResults() {
       : "Continua ad allenarti, ci sei quasi!",
   );
 
-  // Grafico a torta (donut)
+  const outcome = passed
+    ? make("span", "verdictP", "Promosso!")
+    : make("span", "verdictB", "Bocciato");
+
+  // Grafico a torta
   const chartContainer = make("div", "chart-container");
   const chartCircle = make("div", "chart-circle");
   chartCircle.style.setProperty("--pct", `${percentage}%`);
@@ -292,10 +245,48 @@ function renderResults() {
     `${score} / ${TOTAL_QUESTIONS} risposte corrette`,
   );
 
+  // Lista riepilogo domande (da localStorage)
+  const list = make("ul", "results-list");
+  getHistory().forEach((item, i) => {
+    const itemEl = make(
+      "li",
+      `results-item ${item.isCorrect ? "results-item--correct" : "results-item--wrong"}`,
+    );
+
+    const header = make("div", "results-item__header");
+    const icon = make("span", "results-item__icon", item.isCorrect ? "✓" : "✗");
+    const qText = make(
+      "span",
+      "results-item__question",
+      `${i + 1}. ${item.question}`,
+    );
+    header.append(icon, qText);
+    itemEl.appendChild(header);
+
+    if (!item.isCorrect) {
+      const hint = make("p", "results-item__hint");
+      hint.append(
+        "Risposta corretta: ",
+        make("strong", "results-item__correct-answer", item.correctAnswer),
+      );
+      itemEl.appendChild(hint);
+    }
+
+    list.appendChild(itemEl);
+  });
+
   const btn = make("button", "btn btn--primary", "Riprova");
   btn.id = "btn-restart";
 
-  screen.append(subtitle, message, chartContainer, scoreLabel, btn);
+  screen.append(
+    subtitle,
+    message,
+    outcome,
+    chartContainer,
+    scoreLabel,
+    list,
+    btn,
+  );
   return screen;
 }
 
@@ -304,6 +295,7 @@ function renderResults() {
 function handleStart() {
   currentQuestion = 0;
   score = 0;
+  clearHistory();
   currentScreen = "quiz";
   render();
 }
@@ -311,25 +303,30 @@ function handleStart() {
 function handleRestart() {
   currentQuestion = 0;
   score = 0;
+  clearHistory();
   currentScreen = "welcome";
   render();
 }
 
 function handleAnswer(button, answer) {
-  // Disabilita tutti i bottoni risposta
   const buttons = document.querySelectorAll(".quiz-answer");
   buttons.forEach((btn) => (btn.disabled = true));
 
-  // FIX: usa shuffledQuestions, non QUESTIONS, perché le domande sono mescolate
   const currentQ = shuffledQuestions[currentQuestion];
+  const isCorrect = answer === currentQ.correct_answer;
 
-  if (answer === currentQ.correct_answer) {
+  pushHistory({
+    question: currentQ.question,
+    userAnswer: answer,
+    correctAnswer: currentQ.correct_answer,
+    isCorrect,
+  });
+
+  if (isCorrect) {
     score++;
     button.classList.add("quiz-answerTrue");
   } else {
     button.classList.add("quiz-answerFalse");
-    // FIX: confronta tramite shuffledAnswers[data-index], non textContent
-    // (textContent include anche la lettera A/B/C/D dello span)
     buttons.forEach((btn) => {
       if (
         shuffledAnswers[Number(btn.dataset.index)] === currentQ.correct_answer
@@ -340,16 +337,21 @@ function handleAnswer(button, answer) {
   }
 
   stopTimer();
-
-  setTimeout(() => {
-    advance();
-  }, FEEDBACK_DELAY);
+  setTimeout(() => advance(), FEEDBACK_DELAY);
 }
 
 function handleTimeUp() {
   stopTimer();
   const buttons = document.querySelectorAll(".quiz-answer");
   const currentQ = shuffledQuestions[currentQuestion];
+
+  pushHistory({
+    question: currentQ.question,
+    userAnswer: null,
+    correctAnswer: currentQ.correct_answer,
+    isCorrect: false,
+  });
+
   buttons.forEach((btn) => {
     btn.disabled = true;
     if (
@@ -363,13 +365,7 @@ function handleTimeUp() {
 
 function advance() {
   currentQuestion++;
-
-  if (currentQuestion >= TOTAL_QUESTIONS) {
-    currentScreen = "results";
-  } else {
-    currentScreen = "quiz";
-  }
-
+  currentScreen = currentQuestion >= TOTAL_QUESTIONS ? "results" : "quiz";
   render();
 }
 
